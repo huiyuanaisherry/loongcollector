@@ -25,6 +25,9 @@ endif ()
 
 # Options.
 option(BUILD_LOGTAIL "Build Logtail executable and tools" ON)
+# Allows packaging the core collector without rebuilding the optional eBPF driver.
+# The driver is loaded dynamically at runtime and can be supplied as a prebuilt artifact.
+option(BUILD_EBPF_DRIVER "Build the eBPF driver shared library" ON)
 # Used under the Android environment.
 option(BUILD_LOGTAIL_SHARED_LIBRARY "Build Logtail shared library")
 option(ENABLE_ENTERPRISE "enable enterprise feature")
@@ -261,7 +264,9 @@ add_subdirectory(go_pipeline)
 add_subdirectory(common)
 # Build eBPF dependencies
 set(EBPF_DIRVER_TARGET "eBPFDriver")
-add_subdirectory(ebpf/driver)
+if (BUILD_EBPF_DRIVER)
+    add_subdirectory(ebpf/driver)
+endif()
 if(MSVC)
     if (ENABLE_ENTERPRISE)
         add_subdirectory(windows/daemon)
@@ -278,7 +283,7 @@ if(BUILD_LOGTAIL OR BUILD_LOGTAIL_SHARED_LIBRARY)
     all_link(${LOGTAIL_TARGET})
     common_link(${LOGTAIL_TARGET})
     target_link_libraries(${LOGTAIL_TARGET} provider)
-    if (LINUX)
+    if (LINUX AND BUILD_EBPF_DRIVER)
         add_dependencies(${LOGTAIL_TARGET} install_coolbpf)
         if (ENABLE_AGENTSIGHT AND TARGET libagentsight)
             add_dependencies(${LOGTAIL_TARGET} libagentsight)

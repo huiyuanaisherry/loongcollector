@@ -11,12 +11,14 @@ ARG ENABLE_COMPATIBLE_MODE=OFF
 ARG ENABLE_STATIC_LINK_CRT=OFF
 ARG WITHOUTGDB=ON
 ARG WITHSPL=ON
+ARG BUILD_EBPF_DRIVER=ON
 ARG MAKE_JOBS=16
 ENV ENABLE_AGENTSIGHT=$ENABLE_AGENTSIGHT
 ENV ENABLE_COMPATIBLE_MODE=$ENABLE_COMPATIBLE_MODE
 ENV ENABLE_STATIC_LINK_CRT=$ENABLE_STATIC_LINK_CRT
 ENV WITHOUTGDB=$WITHOUTGDB
 ENV WITHSPL=$WITHSPL
+ENV BUILD_EBPF_DRIVER=$BUILD_EBPF_DRIVER
 ENV MAKE_JOBS=$MAKE_JOBS
 ENV VERSION=$VERSION
 
@@ -24,6 +26,24 @@ USER root
 
 WORKDIR /src
 COPY . .
+
+# When the optional eBPF driver is not rebuilt, still install coolbpf headers and
+# generated skeletons needed by the collector's dynamically loaded eBPF interfaces.
+RUN if [ "${BUILD_EBPF_DRIVER}" = "OFF" ]; then \
+        cmake -S core/_thirdparty/coolbpf -B /tmp/coolbpf-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/opt/logtail/deps \
+            -DENABLE_PROFILE=OFF \
+            -DENABLE_AGENTSIGHT=OFF \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_EXAMPLE=OFF \
+            -DBUILD_LCC=OFF && \
+        cmake --build /tmp/coolbpf-build -j4 && \
+        cmake --install /tmp/coolbpf-build && \
+        (cd core/_thirdparty/coolbpf/src/agentsight && cargo build --release --no-default-features) && \
+        mkdir -p /opt/logtail/deps/include && \
+        cp core/_thirdparty/coolbpf/src/agentsight/include/agentsight.h /opt/logtail/deps/include/; \
+    fi
 
 # build and make dist
 RUN sh ./scripts/build_edge_linux.sh && \

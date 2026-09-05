@@ -166,6 +166,7 @@ LegacyCommonConfigProvider::SendHeartbeat(const ConfigServerAddress& configServe
     heartBeatReq.set_agent_type("iLogtail");
     attributes.set_version(ILOGTAIL_VERSION);
     attributes.set_ip(LoongCollectorMonitor::mIpAddr);
+    attributes.set_hostname(LoongCollectorMonitor::mHostname);
     heartBeatReq.mutable_attributes()->MergeFrom(attributes);
     heartBeatReq.mutable_tags()->MergeFrom({GetConfigServerTags().begin(), GetConfigServerTags().end()});
     heartBeatReq.set_running_status("");

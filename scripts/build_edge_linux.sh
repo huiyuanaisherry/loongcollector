@@ -20,6 +20,7 @@ ENABLE_COMPATIBLE_MODE=${ENABLE_COMPATIBLE_MODE:-OFF}
 ENABLE_STATIC_LINK_CRT=${ENABLE_STATIC_LINK_CRT:-OFF}
 WITHOUTGDB=${WITHOUTGDB:-ON}
 WITHSPL=${WITHSPL:-ON}
+BUILD_EBPF_DRIVER=${BUILD_EBPF_DRIVER:-ON}
 MAKE_JOBS=${MAKE_JOBS:-$(nproc)}
 
 ARCH=$(arch)
@@ -99,6 +100,6 @@ fi
 AGENTSIGHT_PREGEN
 fi
 
-echo "mkdir -p core/build && cd core/build && cmake -DCMAKE_BUILD_TYPE=Release -DLOGTAIL_VERSION=${VERSION} -DBUILD_LOGTAIL_UT=OFF -DENABLE_AGENTSIGHT=${ENABLE_AGENTSIGHT} -DENABLE_COMPATIBLE_MODE=${ENABLE_COMPATIBLE_MODE} -DENABLE_STATIC_LINK_CRT=${ENABLE_STATIC_LINK_CRT} -DWITHOUTGDB=${WITHOUTGDB} -DWITHSPL=${WITHSPL} .. && make -sj${MAKE_JOBS} && cd - && ./scripts/upgrade_adapter_lib.sh && ./scripts/plugin_build.sh mod c-shared output ${VERSION} plugins.yml,external_plugins.yml go.mod" >> generated_files/gen_build.sh
+echo "mkdir -p core/build && cd core/build && cmake -DCMAKE_BUILD_TYPE=Release -DLOGTAIL_VERSION=${VERSION} -DBUILD_LOGTAIL_UT=OFF -DENABLE_AGENTSIGHT=${ENABLE_AGENTSIGHT} -DBUILD_EBPF_DRIVER=${BUILD_EBPF_DRIVER} -DENABLE_COMPATIBLE_MODE=${ENABLE_COMPATIBLE_MODE} -DENABLE_STATIC_LINK_CRT=${ENABLE_STATIC_LINK_CRT} -DWITHOUTGDB=${WITHOUTGDB} -DWITHSPL=${WITHSPL} .. && make -sj${MAKE_JOBS} && cd - && ./scripts/upgrade_adapter_lib.sh && ./scripts/plugin_build.sh mod c-shared output ${VERSION} plugins.yml,external_plugins.yml go.mod" >> generated_files/gen_build.sh
 
 ./generated_files/gen_build.sh
