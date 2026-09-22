@@ -36,8 +36,26 @@ jobs:
   linux-amd64:
     name: Linux amd64 package
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
+      - name: Free disk space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /opt/microsoft
+          sudo rm -rf /usr/local/.ghcup
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile
+          docker system prune -af --volumes || true
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          df -hT
+
       - name: Check out code
         uses: actions/checkout@v4
         with:
