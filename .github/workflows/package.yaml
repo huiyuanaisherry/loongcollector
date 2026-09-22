@@ -1,0 +1,116 @@
+# Copyright 2021 iLogtail Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Build Packages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version embedded in the artifact names
+        required: true
+        default: ULAS
+
+env:
+  PACKAGE_VERSION: ${{ github.event.inputs.version || 'ULAS' }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-amd64:
+    name: Linux amd64 package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.9
+
+      - name: Fetch coolbpf submodule
+        shell: bash
+        run: |
+          submodule_path="core/_thirdparty/coolbpf"
+          git config "submodule.${submodule_path}.url" "https://github.com/aliyun/coolbpf.git"
+          git submodule update --init
+
+      - name: Build Linux package
+        env:
+          VERSION: ${{ env.PACKAGE_VERSION }}
+        run: make dist
+
+      - name: Verify Linux package
+        shell: bash
+        run: |
+          package="dist/loongcollector-${PACKAGE_VERSION}.linux-amd64.tar.gz"
+          test -s "$package"
+          tar -tzf "$package" >/dev/null
+          ls -lh "$package"
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: loongcollector-${{ env.PACKAGE_VERSION }}.linux-amd64
+          path: dist/loongcollector-${{ env.PACKAGE_VERSION }}.linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-amd64:
+    name: Windows amd64 package
+    runs-on: Windows
+    timeout-minutes: 90
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build Windows package
+        shell: powershell
+        env:
+          VERSION: ${{ env.PACKAGE_VERSION }}
+        run: |
+          & .\scripts\windows64_build.bat $env:VERSION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $package = "dist\loongcollector-$env:VERSION.windows-amd64.zip"
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          if (-not (Test-Path "output\loongcollector.exe")) {
+            throw "Windows build output is missing loongcollector.exe"
+          }
+          if (-not (Test-Path "output\GoPluginAdapter.dll")) {
+            throw "Windows build output is missing GoPluginAdapter.dll"
+          }
+          if (-not (Test-Path "output\GoPluginBase.dll")) {
+            throw "Windows build output is missing GoPluginBase.dll"
+          }
+          Compress-Archive -Path output\* -DestinationPath $package -Force
+          if (-not (Test-Path $package)) { throw "Windows package was not created" }
+          Get-Item $package | Format-List FullName,Length
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: loongcollector-${{ env.PACKAGE_VERSION }}.windows-amd64
+          path: dist/loongcollector-${{ env.PACKAGE_VERSION }}.windows-amd64.zip
+          if-no-files-found: error
+          retention-days: 7
