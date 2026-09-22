@@ -50,9 +50,28 @@ if not defined LOONCOLLECTOR_DEPS_PATH (
 REM avoid '\' beed treated as escape.
 set LOONCOLLECTOR_DEPS_PATH=%LOONCOLLECTOR_DEPS_PATH:\=/%
 
-REM Change to where cmake locates
+REM Change to where cmake locates. core/CMakeLists.txt requires cmake >= 3.22, so the
+REM cmake bundled with VS2017 (3.12) is too old and must not be used here.
 if not defined CMAKE_BIN (
-    set CMAKE_BIN="C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake"
+    for %%D in (
+        "C:\Program Files\Microsoft Visual Studio\2022\Community"
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional"
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+        "C:\Program Files\Microsoft Visual Studio\2019\Community"
+        "C:\Program Files\Microsoft Visual Studio\2019\Professional"
+        "C:\Program Files\Microsoft Visual Studio\2019\Enterprise"
+    ) do (
+        if not defined CMAKE_BIN if exist "%%~D\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" (
+            set CMAKE_BIN="%%~D\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+        )
+    )
+    if not defined CMAKE_BIN if exist "C:\Program Files\CMake\bin\cmake.exe" (
+        set CMAKE_BIN="C:\Program Files\CMake\bin\cmake.exe"
+    )
+)
+if not defined CMAKE_BIN (
+    echo CMake not found. Install cmake 3.22+ or set CMAKE_BIN to its full path.
+    exit /b 1
 )
 
 REM Change to where devenv locates
@@ -69,7 +88,18 @@ set GOFLAGS=-buildvcs=false
 set CGO_ENABLED=1
 set LINK=/ignore:4099
 
-set PATH=%DEVENV_BIN%;%MINGW_PATH%;%PATH%
+REM Add VS devenv (and optional MinGW) to PATH. Entries must not be quoted here.
+for %%I in (%DEVENV_BIN%) do set "PATH=%%~dpI;%PATH%"
+if defined MINGW_PATH set "PATH=%MINGW_PATH%;%PATH%"
+
+if not exist "%BOOST_ROOT%" (
+    echo Boost not found at "%BOOST_ROOT%". Set BOOST_ROOT to your boost_1_68_0 directory.
+    exit /b 1
+)
+if not exist "%LOONCOLLECTOR_DEPS_PATH%" (
+    echo Dependencies not found at "%LOONCOLLECTOR_DEPS_PATH%". Set LOONCOLLECTOR_DEPS_PATH to your ilogtail-deps.windows-x64 directory.
+    exit /b 1
+)
 
 REM Clean up
 IF exist %OUTPUT_DIR% ( rd /s /q %OUTPUT_DIR% )
@@ -88,7 +118,7 @@ if defined BUILD_LOGTAIL_UT (
         set LOGTAIL_UT=ON
     )
 )
-%CMAKE_BIN% -G "Visual Studio 15 2017 Win64" ^
+%CMAKE_BIN% -G "Visual Studio 15 2017" -A x64 ^
     -DBUILD_LOGTAIL_UT=%LOGTAIL_UT% ^
     -DLOGTAIL_VERSION=%LOONCOLLECTOR_VERSION% ^
     -DWITHSPL=OFF ^
