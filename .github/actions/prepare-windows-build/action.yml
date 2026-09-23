@@ -1,0 +1,135 @@
+# Copyright 2021 iLogtail Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Prepare Windows build environment
+description: Install the toolchain and the prebuilt dependencies required by scripts/windows64_build.bat.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.25.9
+
+    # The prebuilt boost binaries are tagged msvc-14.1, which is the v141 toolset,
+    # so the core has to be compiled with that toolset on a VS2022 runner.
+    - name: Install MSVC v141 toolset
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $vsPath = & $vswhere -latest -products * -property installationPath
+        if (-not $vsPath) { throw "No Visual Studio installation was found on this runner" }
+        $v141 = Get-ChildItem "$vsPath\VC\Tools\MSVC" -Directory -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -like '14.16*' }
+        if ($v141) {
+          Write-Host "v141 toolset is already installed: $($v141.FullName)"
+          exit 0
+        }
+        Write-Host "Installing the v141 toolset into $vsPath"
+        $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+        # --wait is required: without it the bootstrapper returns as soon as it has
+        # handed the work over to the installer process, and the toolset is missing
+        # again when the build starts.
+        & $installer modify --installPath $vsPath `
+          --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
+          --quiet --norestart --wait
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+          throw "vs_installer modify failed with exit code $LASTEXITCODE"
+        }
+        Write-Host "v141 toolset installed"
+
+    # cgo (CGO_ENABLED=1) needs a gcc targeting x86_64 to build the Go plugin as a
+    # 64-bit c-shared library. Prefer a gcc that the image already ships and only
+    # install one when there is none.
+    - name: Install MinGW
+      shell: pwsh
+      run: |
+        function Test-X64Gcc($path) {
+          if (-not (Test-Path $path)) { return $false }
+          try { return (& $path -dumpmachine) -match 'x86_64' } catch { return $false }
+        }
+
+        $gcc = $null
+        foreach ($candidate in @(
+            'C:\mingw64\bin\gcc.exe'
+            'C:\tools\mingw64\bin\gcc.exe'
+            'C:\msys64\mingw64\bin\gcc.exe'
+            'C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin\gcc.exe'
+          )) {
+          if (Test-X64Gcc $candidate) { $gcc = $candidate; break }
+        }
+        if (-not $gcc) {
+          $onPath = Get-Command gcc.exe -ErrorAction SilentlyContinue
+          if ($onPath -and (Test-X64Gcc $onPath.Source)) { $gcc = $onPath.Source }
+        }
+        if ($gcc) {
+          Write-Host "Using the MinGW gcc that ships with the image: $gcc"
+        } else {
+          Write-Host "No 64-bit MinGW gcc found on the image, installing one"
+          choco install mingw -y --no-progress
+          foreach ($dir in @('C:\mingw64', 'C:\tools\mingw64', 'C:\msys64\mingw64', 'C:\ProgramData\chocolatey\lib\mingw')) {
+            if (-not (Test-Path $dir)) { continue }
+            $found = Get-ChildItem $dir -Recurse -Filter gcc.exe -ErrorAction SilentlyContinue |
+              Where-Object { Test-X64Gcc $_.FullName } | Select-Object -First 1
+            if ($found) { $gcc = $found.FullName; break }
+          }
+        }
+        if (-not $gcc) { throw "A 64-bit MinGW gcc is not available on this runner" }
+
+        & $gcc --version | Select-Object -First 1
+        Write-Host "gcc target: $(& $gcc -dumpmachine)"
+        "MINGW_PATH=$((Get-Item $gcc).DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+    - name: Cache prebuilt dependencies
+      id: cache-deps
+      uses: actions/cache@v4
+      with:
+        path: |
+          C:\loongcollector-deps\boost_1_68_0
+          C:\loongcollector-deps\ilogtail-deps.windows-x64
+        key: windows-prebuilt-deps-boost-1.68.0-msvc-14.1-v1
+
+    - name: Download prebuilt dependencies
+      if: steps.cache-deps.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $downloads = Join-Path $env:RUNNER_TEMP 'loongcollector-deps'
+        New-Item -ItemType Directory -Force -Path $downloads, 'C:\loongcollector-deps' | Out-Null
+        $base = 'https://ilogtail-community-edition.oss-cn-shanghai.aliyuncs.com/prebuilt-dependencies'
+        curl.exe -sSL -o "$downloads\ilogtail-deps.windows-x64.zip" "$base/ilogtail-deps.windows-x64.zip"
+        if ($LASTEXITCODE -ne 0) { throw "Downloading ilogtail-deps.windows-x64.zip failed" }
+        curl.exe -sSL -o "$downloads\boost.exe" "$base/boost_1_68_0-msvc-14.1-64.exe"
+        if ($LASTEXITCODE -ne 0) { throw "Downloading boost_1_68_0-msvc-14.1-64.exe failed" }
+        Expand-Archive -Path "$downloads\ilogtail-deps.windows-x64.zip" -DestinationPath 'C:\loongcollector-deps' -Force
+        Start-Process -FilePath "$downloads\boost.exe" -Wait -ArgumentList `
+          '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/DIR=C:\loongcollector-deps\boost_1_68_0'
+        Remove-Item $downloads -Recurse -Force
+
+    - name: Export build environment
+      shell: pwsh
+      run: |
+        $boost = 'C:\loongcollector-deps\boost_1_68_0'
+        if (-not (Test-Path "$boost\boost")) { throw "boost_1_68_0 was not found at $boost" }
+        $deps = Get-ChildItem 'C:\loongcollector-deps' -Recurse -Directory -Filter 'ilogtail-deps.windows-x64' |
+          Where-Object { Test-Path (Join-Path $_.FullName 'include') } | Select-Object -First 1
+        if (-not $deps) { throw "ilogtail-deps.windows-x64 was not found" }
+        @(
+          "BOOST_ROOT=$boost"
+          "LOONCOLLECTOR_DEPS_PATH=$($deps.FullName)"
+          "VS_TOOLSET=v141"
+          "GOPROXY=https://proxy.golang.org,direct"
+        ) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        Write-Host "BOOST_ROOT=$boost"
+        Write-Host "LOONCOLLECTOR_DEPS_PATH=$($deps.FullName)"
