@@ -101,6 +101,16 @@ if not exist "%LOONCOLLECTOR_DEPS_PATH%" (
     exit /b 1
 )
 
+REM Keep the compiler temporary files on the source drive instead of %TEMP%.
+REM Security suites on some machines delete files under %TEMP% while a build is
+REM running, which makes cl.exe lose its response files (fatal error C1069) and
+REM Tracker.exe report "response file not found".
+if not defined LOONCOLLECTOR_BUILD_TMP set "LOONCOLLECTOR_BUILD_TMP=%~d0\loongcollector-build-tmp"
+if not exist "%LOONCOLLECTOR_BUILD_TMP%" mkdir "%LOONCOLLECTOR_BUILD_TMP%"
+set "TMP=%LOONCOLLECTOR_BUILD_TMP%"
+set "TEMP=%LOONCOLLECTOR_BUILD_TMP%"
+echo build temp dir: %LOONCOLLECTOR_BUILD_TMP%
+
 REM Clean up
 IF exist %OUTPUT_DIR% ( rd /s /q %OUTPUT_DIR% )
 mkdir %OUTPUT_DIR%

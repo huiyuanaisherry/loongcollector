@@ -31,6 +31,12 @@ if (MSVC)
     add_definitions(-DNOMINMAX)
 endif ()
 
+# Discover tests when ctest runs instead of right after each test binary is
+# linked. Launching the freshly linked executables during the build fails on
+# machines where security software blocks newly created binaries, and the
+# executables are run directly by scripts/windows64_run_core_ut.bat anyway.
+set(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_TEST)
+
 macro(add_core_subdir)
     if (ENABLE_ENTERPRISE)
         add_subdirectory(apm)
