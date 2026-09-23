@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <filesystem>
 #include <future>
 #include <memory>
 #include <string>
@@ -27,6 +28,7 @@
 #include "collection_pipeline/queue/ProcessQueueManager.h"
 #include "collection_pipeline/queue/QueueKeyManager.h"
 #include "common/JsonUtil.h"
+#include "common/StringTools.h"
 #include "config/CollectionConfig.h"
 #include "plugin/input/InputFeedbackInterfaceRegistry.h"
 #include "plugin/processor/inner/ProcessorSplitLogStringNative.h"
@@ -37,6 +39,15 @@
 using namespace std;
 
 namespace logtail {
+
+#if defined(_MSC_VER)
+// The core resolves the relative log path "/home" in the config against the drive
+// the test binary runs from, so the expected Go pipeline JSON must use that drive
+// instead of hardcoding C: (the workspace is not always on C:).
+static std::string GetExpectedHomePath() {
+    return std::filesystem::current_path().root_name().string() + "\\\\home";
+}
+#endif
 
 class PipelineUnittest : public ::testing::Test {
 public:
@@ -226,6 +237,7 @@ void PipelineUnittest::OnSuccessfulInit() const {
             ]
         }
     )";
+    ReplaceString(goPipelineWithInputStr, "C:\\\\home", GetExpectedHomePath());
 #else
     goPipelineWithInputStr = R"(
         {
@@ -2660,6 +2672,7 @@ void PipelineUnittest::OnInputFileWithContainerDiscovery() const {
             ]
         }
     )";
+    ReplaceString(goPipelineWithInputStr, "C:\\\\home", GetExpectedHomePath());
 #else
     goPipelineWithInputStr = R"(
         {
@@ -2745,6 +2758,7 @@ void PipelineUnittest::OnInputFileWithContainerDiscovery() const {
             ]
         }
     )";
+    ReplaceString(goPipelineWithInputStr, "C:\\\\home", GetExpectedHomePath());
 #else
     goPipelineWithInputStr = R"(
         {
