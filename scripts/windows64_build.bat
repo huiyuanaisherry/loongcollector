@@ -172,8 +172,13 @@ REM Optional toolset for the generator above, for example v141 on a VS2022
 REM installation whose prebuilt boost binaries are tagged msvc-14.1.
 set VS_TOOLSET_ARG=
 if defined VS_TOOLSET set VS_TOOLSET_ARG=-T %VS_TOOLSET%
+REM The prebuilt boost libraries are tagged msvc-14.1, so when the core is compiled
+REM with another toolset FindBoost has to be told which tag to look for.
+set BOOST_COMPILER_ARG=
+if defined BOOST_COMPILER set BOOST_COMPILER_ARG=-DBoost_COMPILER=%BOOST_COMPILER%
 
 %CMAKE_BIN% -G "%VS_GENERATOR%" -A x64 %VS_TOOLSET_ARG% ^
+    %BOOST_COMPILER_ARG% ^
     -DBUILD_LOGTAIL_UT=%LOGTAIL_UT% ^
     -DLOGTAIL_VERSION=%LOONCOLLECTOR_VERSION% ^
     -DWITHSPL=OFF ^

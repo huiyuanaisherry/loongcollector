@@ -23,32 +23,46 @@ runs:
       with:
         go-version: 1.25.9
 
-    # The prebuilt boost binaries are tagged msvc-14.1, which is the v141 toolset,
-    # so the core has to be compiled with that toolset on a VS2022 runner.
+    # The prebuilt boost binaries are tagged msvc-14.1, i.e. the v141 toolset, and so
+    # are the other prebuilt dependencies. The hosted image only ships v143, so v141
+    # has to be added to the Visual Studio installation first.
     - name: Install MSVC v141 toolset
       shell: pwsh
       run: |
+        function Get-V141($vsPath) {
+          Get-ChildItem "$vsPath\VC\Tools\MSVC" -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like '14.16*' } | Select-Object -First 1
+        }
+
         $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
         $vsPath = & $vswhere -latest -products * -property installationPath
         if (-not $vsPath) { throw "No Visual Studio installation was found on this runner" }
-        $v141 = Get-ChildItem "$vsPath\VC\Tools\MSVC" -Directory -ErrorAction SilentlyContinue |
-          Where-Object { $_.Name -like '14.16*' }
+
+        if (-not (Get-V141 $vsPath)) {
+          Write-Host "Adding the v141 toolset to $vsPath"
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          $proc = Start-Process -FilePath $installer -Wait -PassThru -ArgumentList @(
+            'modify', '--installPath', $vsPath,
+            '--add', 'Microsoft.VisualStudio.Component.VC.v141.x86.x64',
+            '--quiet', '--norestart', '--wait'
+          )
+          Write-Host "vs_installer exited with $($proc.ExitCode)"
+          # The installer hands the work over to a background process often enough that
+          # its exit code means nothing, so poll the disk instead of trusting it.
+          $deadline = (Get-Date).AddMinutes(15)
+          while (-not (Get-V141 $vsPath) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 20 }
+        }
+
+        $v141 = Get-V141 $vsPath
         if ($v141) {
-          Write-Host "v141 toolset is already installed: $($v141.FullName)"
-          exit 0
+          Write-Host "v141 toolset is available at $($v141.FullName)"
+          "VS_TOOLSET=v141" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        } else {
+          # Building with v143 still links the v141 boost libraries as long as
+          # FindBoost is told which tag they carry.
+          Write-Warning "v141 is not available on this runner, building with the image default toolset"
+          "BOOST_COMPILER=-vc141" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
         }
-        Write-Host "Installing the v141 toolset into $vsPath"
-        $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-        # --wait is required: without it the bootstrapper returns as soon as it has
-        # handed the work over to the installer process, and the toolset is missing
-        # again when the build starts.
-        & $installer modify --installPath $vsPath `
-          --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
-          --quiet --norestart --wait
-        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
-          throw "vs_installer modify failed with exit code $LASTEXITCODE"
-        }
-        Write-Host "v141 toolset installed"
 
     # cgo (CGO_ENABLED=1) needs a gcc targeting x86_64 to build the Go plugin as a
     # 64-bit c-shared library. Prefer a gcc that the image already ships and only
@@ -128,7 +142,6 @@ runs:
         @(
           "BOOST_ROOT=$boost"
           "LOONCOLLECTOR_DEPS_PATH=$($deps.FullName)"
-          "VS_TOOLSET=v141"
           "GOPROXY=https://proxy.golang.org,direct"
         ) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
         Write-Host "BOOST_ROOT=$boost"
