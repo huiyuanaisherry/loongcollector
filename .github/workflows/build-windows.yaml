@@ -37,16 +37,15 @@ concurrency:
 
 jobs:
   BuildCoreWindows:
-    runs-on: windows-2022
-    # A private repository gets the 2 vCPU / 8 GB hosted runner, which needs far
-    # longer than the 60 minutes the self-hosted runner was budgeted for.
-    timeout-minutes: 180
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        runner: [Windows]
+      fail-fast: true
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-
-      - name: Prepare build environment
-        uses: ./.github/actions/prepare-windows-build
 
       - name: Build
         shell: cmd

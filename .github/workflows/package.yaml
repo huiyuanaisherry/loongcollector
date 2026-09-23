@@ -96,16 +96,11 @@ jobs:
 
   windows-amd64:
     name: Windows amd64 package
-    runs-on: windows-2022
-    # Installing the v141 toolset and the prebuilt dependencies alone can take
-    # 20 minutes on a cold cache.
-    timeout-minutes: 180
+    runs-on: Windows
+    timeout-minutes: 90
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-
-      - name: Prepare build environment
-        uses: ./.github/actions/prepare-windows-build
 
       - name: Build Windows package
         shell: powershell -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"

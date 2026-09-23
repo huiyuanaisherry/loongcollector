@@ -140,16 +140,15 @@ if not exist "%LOONCOLLECTOR_DEPS_PATH%" (
     exit /b 1
 )
 
-REM Optional: move the compiler temporary files off %TEMP%. Security suites on
-REM some machines delete files under %TEMP% while a build is running, which makes
-REM cl.exe lose its response files (fatal error C1069) and Tracker.exe report
-REM "response file not found". Set LOONCOLLECTOR_BUILD_TMP to enable it.
-if defined LOONCOLLECTOR_BUILD_TMP (
-    if not exist "%LOONCOLLECTOR_BUILD_TMP%" mkdir "%LOONCOLLECTOR_BUILD_TMP%"
-    set "TMP=%LOONCOLLECTOR_BUILD_TMP%"
-    set "TEMP=%LOONCOLLECTOR_BUILD_TMP%"
-    echo build temp dir: %LOONCOLLECTOR_BUILD_TMP%
-)
+REM Keep the compiler temporary files on the source drive instead of %TEMP%.
+REM Security suites on some machines delete files under %TEMP% while a build is
+REM running, which makes cl.exe lose its response files (fatal error C1069) and
+REM Tracker.exe report "response file not found".
+if not defined LOONCOLLECTOR_BUILD_TMP set "LOONCOLLECTOR_BUILD_TMP=%~d0\loongcollector-build-tmp"
+if not exist "%LOONCOLLECTOR_BUILD_TMP%" mkdir "%LOONCOLLECTOR_BUILD_TMP%"
+set "TMP=%LOONCOLLECTOR_BUILD_TMP%"
+set "TEMP=%LOONCOLLECTOR_BUILD_TMP%"
+echo build temp dir: %LOONCOLLECTOR_BUILD_TMP%
 
 REM Clean up
 IF exist %OUTPUT_DIR% ( rd /s /q %OUTPUT_DIR% )
@@ -168,17 +167,7 @@ if defined BUILD_LOGTAIL_UT (
         set LOGTAIL_UT=ON
     )
 )
-REM Optional toolset for the generator above, for example v141 on a VS2022
-REM installation whose prebuilt boost binaries are tagged msvc-14.1.
-set VS_TOOLSET_ARG=
-if defined VS_TOOLSET set VS_TOOLSET_ARG=-T %VS_TOOLSET%
-REM The prebuilt boost libraries are tagged msvc-14.1, so when the core is compiled
-REM with another toolset FindBoost has to be told which tag to look for.
-set BOOST_COMPILER_ARG=
-if defined BOOST_COMPILER set BOOST_COMPILER_ARG=-DBoost_COMPILER=%BOOST_COMPILER%
-
-%CMAKE_BIN% -G "%VS_GENERATOR%" -A x64 %VS_TOOLSET_ARG% ^
-    %BOOST_COMPILER_ARG% ^
+%CMAKE_BIN% -G "%VS_GENERATOR%" -A x64 ^
     -DBUILD_LOGTAIL_UT=%LOGTAIL_UT% ^
     -DLOGTAIL_VERSION=%LOONCOLLECTOR_VERSION% ^
     -DWITHSPL=OFF ^
