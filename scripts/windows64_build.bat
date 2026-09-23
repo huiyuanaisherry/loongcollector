@@ -76,8 +76,25 @@ if not defined CMAKE_BIN (
 
 REM Change to where devenv locates
 set DEVENV_BIN="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\IDE\devenv.com"
-@REM REM Change to where mingw locates
-@REM set MINGW_PATH=C:\workspace\mingw64\bin
+
+REM Change to where mingw locates. cgo (CGO_ENABLED=1) needs a gcc to build
+REM GoPluginBase.dll with -buildmode=c-shared.
+if not defined MINGW_PATH (
+    for %%D in (
+        "D:\loongcollector-windows-build\mingw64"
+        "C:\workspace\mingw64"
+        "C:\mingw64"
+        "%LOCALAPPDATA%\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64"
+    ) do (
+        if not defined MINGW_PATH if exist "%%~D\bin\gcc.exe" (
+            set MINGW_PATH=%%~D\bin
+        )
+    )
+)
+if not defined MINGW_PATH (
+    echo MinGW gcc not found. Install MinGW-w64 or set MINGW_PATH to its bin directory.
+    exit /b 1
+)
 
 set OUTPUT_DIR=%LOONGCOLLECTOR_SRC_PATH%\output
 set LOONCOLLECTOR_CORE_BUILD_PATH=%LOONGCOLLECTOR_SRC_PATH%\core\build
@@ -88,9 +105,8 @@ set GOFLAGS=-buildvcs=false
 set CGO_ENABLED=1
 set LINK=/ignore:4099
 
-REM Add VS devenv (and optional MinGW) to PATH. Entries must not be quoted here.
+REM Add VS devenv to PATH. Entries must not be quoted here.
 for %%I in (%DEVENV_BIN%) do set "PATH=%%~dpI;%PATH%"
-if defined MINGW_PATH set "PATH=%MINGW_PATH%;%PATH%"
 
 if not exist "%BOOST_ROOT%" (
     echo Boost not found at "%BOOST_ROOT%". Set BOOST_ROOT to your boost_1_68_0 directory.
@@ -146,6 +162,15 @@ if not %ERRORLEVEL% == 0 (
     exit /b 1
 )
 echo Build core success
+
+REM MinGW is only needed by cgo, so it is added to PATH after the MSVC build to
+REM keep the C++ toolchain untouched.
+set "PATH=%MINGW_PATH%;%PATH%"
+gcc --version 1>nul 2>nul
+if not %ERRORLEVEL% == 0 (
+    echo MinGW gcc not usable from "%MINGW_PATH%".
+    exit /b 1
+)
 
 REM Import plugins
 cd %LOONGCOLLECTOR_SRC_PATH%
