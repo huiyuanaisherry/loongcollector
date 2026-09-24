@@ -74,8 +74,29 @@ if not defined CMAKE_BIN (
     exit /b 1
 )
 
-REM Change to where devenv locates
-set DEVENV_BIN="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\IDE\devenv.com"
+REM Change to where devenv locates. The CMake generator has to match the Visual
+REM Studio installation that owns devenv, so both are detected together.
+if not defined DEVENV_BIN (
+    for %%V in (
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise|Visual Studio 17 2022"
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional|Visual Studio 17 2022"
+        "C:\Program Files\Microsoft Visual Studio\2022\Community|Visual Studio 17 2022"
+        "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise|Visual Studio 15 2017"
+        "C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional|Visual Studio 15 2017"
+        "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community|Visual Studio 15 2017"
+    ) do (
+        for /f "tokens=1,2 delims=|" %%A in (%%V) do (
+            if not defined DEVENV_BIN if exist "%%~A\Common7\IDE\devenv.com" (
+                set DEVENV_BIN="%%~A\Common7\IDE\devenv.com"
+                set VS_GENERATOR=%%B
+            )
+        )
+    )
+)
+if not defined DEVENV_BIN (
+    echo devenv not found. Install Visual Studio 2017/2022 or set DEVENV_BIN to its full path.
+    exit /b 1
+)
 
 REM Change to where mingw locates. cgo (CGO_ENABLED=1) needs a gcc to build
 REM GoPluginBase.dll with -buildmode=c-shared.
@@ -99,7 +120,9 @@ if not defined MINGW_PATH (
 set OUTPUT_DIR=%LOONGCOLLECTOR_SRC_PATH%\output
 set LOONCOLLECTOR_CORE_BUILD_PATH=%LOONGCOLLECTOR_SRC_PATH%\core\build
 
-go env -w GOPROXY="https://goproxy.cn,direct"
+REM The Go module proxy defaults to a China mirror; an explicitly configured
+REM proxy (for example on a GitHub hosted runner) is left untouched.
+if not defined GOPROXY go env -w GOPROXY="https://goproxy.cn,direct"
 set GOARCH=amd64
 set GOFLAGS=-buildvcs=false
 set CGO_ENABLED=1
@@ -117,15 +140,16 @@ if not exist "%LOONCOLLECTOR_DEPS_PATH%" (
     exit /b 1
 )
 
-REM Keep the compiler temporary files on the source drive instead of %TEMP%.
-REM Security suites on some machines delete files under %TEMP% while a build is
-REM running, which makes cl.exe lose its response files (fatal error C1069) and
-REM Tracker.exe report "response file not found".
-if not defined LOONCOLLECTOR_BUILD_TMP set "LOONCOLLECTOR_BUILD_TMP=%~d0\loongcollector-build-tmp"
-if not exist "%LOONCOLLECTOR_BUILD_TMP%" mkdir "%LOONCOLLECTOR_BUILD_TMP%"
-set "TMP=%LOONCOLLECTOR_BUILD_TMP%"
-set "TEMP=%LOONCOLLECTOR_BUILD_TMP%"
-echo build temp dir: %LOONCOLLECTOR_BUILD_TMP%
+REM Optional: move the compiler temporary files off %TEMP%. Security suites on
+REM some machines delete files under %TEMP% while a build is running, which makes
+REM cl.exe lose its response files (fatal error C1069) and Tracker.exe report
+REM "response file not found". Set LOONCOLLECTOR_BUILD_TMP to enable it.
+if defined LOONCOLLECTOR_BUILD_TMP (
+    if not exist "%LOONCOLLECTOR_BUILD_TMP%" mkdir "%LOONCOLLECTOR_BUILD_TMP%"
+    set "TMP=%LOONCOLLECTOR_BUILD_TMP%"
+    set "TEMP=%LOONCOLLECTOR_BUILD_TMP%"
+    echo build temp dir: %LOONCOLLECTOR_BUILD_TMP%
+)
 
 REM Clean up
 IF exist %OUTPUT_DIR% ( rd /s /q %OUTPUT_DIR% )
@@ -144,7 +168,17 @@ if defined BUILD_LOGTAIL_UT (
         set LOGTAIL_UT=ON
     )
 )
-%CMAKE_BIN% -G "Visual Studio 15 2017" -A x64 ^
+REM Optional toolset for the generator above, for example v141 on a VS2022
+REM installation whose prebuilt boost binaries are tagged msvc-14.1.
+set VS_TOOLSET_ARG=
+if defined VS_TOOLSET set VS_TOOLSET_ARG=-T %VS_TOOLSET%
+REM The prebuilt boost libraries are tagged msvc-14.1, so when the core is compiled
+REM with another toolset FindBoost has to be told which tag to look for.
+set BOOST_COMPILER_ARG=
+if defined BOOST_COMPILER set BOOST_COMPILER_ARG=-DBoost_COMPILER=%BOOST_COMPILER%
+
+%CMAKE_BIN% -G "%VS_GENERATOR%" -A x64 %VS_TOOLSET_ARG% ^
+    %BOOST_COMPILER_ARG% ^
     -DBUILD_LOGTAIL_UT=%LOGTAIL_UT% ^
     -DLOGTAIL_VERSION=%LOONCOLLECTOR_VERSION% ^
     -DWITHSPL=OFF ^

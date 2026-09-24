@@ -681,7 +681,19 @@ void InputStaticFileUnittest::TestGetFiles() {
         filesystem::create_directories("test_logs/dir1/dir2");
         filesystem::path symlinkTarget = filesystem::absolute("test_logs/dir1");
         symlinkTarget = NormalizeNativePath(symlinkTarget.string());
-        filesystem::create_directory_symlink(symlinkTarget, "test_logs/dir1/dir2/dir3");
+        try {
+            filesystem::create_directory_symlink(symlinkTarget, "test_logs/dir1/dir2/dir3");
+        } catch (const std::exception& e) {
+            // Creating a symlink needs a privilege the account running the tests may not hold
+            // (Windows without developer mode), so skip instead of failing the whole suite.
+            filesystem::remove_all("test_logs");
+#if defined(GTEST_HAS_SKIP) && GTEST_HAS_SKIP
+            GTEST_SKIP() << "cannot create symlink in this environment: " << e.what();
+#else
+            GTEST_LOG_(INFO) << "Skipped: cannot create symlink in this environment: " << e.what();
+            return;
+#endif
+        }
         { ofstream fout("test_logs/dir1/test.log"); }
 
         filesystem::path filePath = filesystem::absolute("test_logs/**/*.log");
