@@ -206,6 +206,15 @@ func NewFlusherKafka() *FlusherKafka {
 		},
 	}
 }
+
+// UseRawV2Converter makes this flusher pass V2 ByteArray events to Kafka unchanged.
+// It is intended for specialized Kafka flushers that own record serialization while
+// reusing this flusher's producer, retry, authentication, and batching behavior.
+func (k *FlusherKafka) UseRawV2Converter() {
+	k.Convert.Protocol = converter.ProtocolRaw
+	k.Convert.Encoding = converter.EncodingCustom
+}
+
 func (k *FlusherKafka) Init(context pipeline.Context) error {
 	k.context = context
 	if len(k.Brokers) == 0 {

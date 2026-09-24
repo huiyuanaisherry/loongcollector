@@ -48,6 +48,7 @@ LoongCollector 提供两类输出插件：
 | `flusher_prometheus`<br>[Prometheus](extended/flusher-prometheus.md) | 社区 | Remote Write 写入 Prometheus 兼容时序库。 |
 | `flusher_pulsar`<br>[Pulsar](extended/flusher-pulsar.md) | 社区<br>[shalousun](https://github.com/shalousun) | 写入 Apache Pulsar。 |
 | `flusher_stdout`<br>[标准输出/文件](extended/flusher-stdout.md) | SLS 官方 | 标准输出或文件，便于本地调试与排障。 |
+| `flusher_ulas_normalization_kafka`<br>[ULAS 归一化 Kafka](extended/flusher-ulas-normalization-kafka.md) | ULAS | 为 ULAS Agent 日志输出固定的归一化 Kafka JSON。 |
 
 上表按插件 **Type** 字典序排列。完整稳定性等级与其它交叉引用仍以 [插件概览](../overview.md) 为准。
 
